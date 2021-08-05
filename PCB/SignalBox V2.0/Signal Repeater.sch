@@ -1,0 +1,168 @@
+EESchema Schematic File Version 4
+EELAYER 30 0
+EELAYER END
+$Descr A4 11693 8268
+encoding utf-8
+Sheet 10 10
+Title ""
+Date ""
+Rev ""
+Comp ""
+Comment1 ""
+Comment2 ""
+Comment3 ""
+Comment4 ""
+$EndDescr
+Text HLabel 2400 2750 0    50   Input ~ 0
+StopGo
+Text HLabel 2350 5900 0    50   Output ~ 0
+Occupied
+Text HLabel 2300 1300 0    50   Input ~ 0
+Vin
+Text HLabel 2300 5050 0    50   Output ~ 0
+GND
+$Comp
+L Device:LED D24
+U 1 1 60957600
+P 4600 2400
+AR Path="/60957159/60957600" Ref="D24"  Part="1" 
+AR Path="/60964747/60957600" Ref="D21"  Part="1" 
+AR Path="/609650B3/60957600" Ref="D18"  Part="1" 
+AR Path="/60965AD8/60957600" Ref="D15"  Part="1" 
+AR Path="/609665AC/60957600" Ref="D3"  Part="1" 
+AR Path="/60966E8C/60957600" Ref="D6"  Part="1" 
+AR Path="/60967721/60957600" Ref="D9"  Part="1" 
+AR Path="/60967FE8/60957600" Ref="D12"  Part="1" 
+F 0 "D24" V 4639 2282 50  0000 R CNN
+F 1 "Red" V 4548 2282 50  0000 R CNN
+F 2 "LED_THT:LED_D5.0mm" H 4600 2400 50  0001 C CNN
+F 3 "~" H 4600 2400 50  0001 C CNN
+	1    4600 2400
+	0    -1   -1   0   
+$EndComp
+$Comp
+L Device:LED D25
+U 1 1 60959509
+P 4600 3100
+AR Path="/60957159/60959509" Ref="D25"  Part="1" 
+AR Path="/60964747/60959509" Ref="D22"  Part="1" 
+AR Path="/609650B3/60959509" Ref="D19"  Part="1" 
+AR Path="/60965AD8/60959509" Ref="D16"  Part="1" 
+AR Path="/609665AC/60959509" Ref="D4"  Part="1" 
+AR Path="/60966E8C/60959509" Ref="D7"  Part="1" 
+AR Path="/60967721/60959509" Ref="D10"  Part="1" 
+AR Path="/60967FE8/60959509" Ref="D13"  Part="1" 
+F 0 "D25" V 4639 2982 50  0000 R CNN
+F 1 "Green" V 4548 2982 50  0000 R CNN
+F 2 "LED_THT:LED_D5.0mm" H 4600 3100 50  0001 C CNN
+F 3 "~" H 4600 3100 50  0001 C CNN
+	1    4600 3100
+	0    -1   -1   0   
+$EndComp
+$Comp
+L Device:LED D26
+U 1 1 6095A4BA
+P 5950 2750
+AR Path="/60957159/6095A4BA" Ref="D26"  Part="1" 
+AR Path="/60964747/6095A4BA" Ref="D23"  Part="1" 
+AR Path="/609650B3/6095A4BA" Ref="D20"  Part="1" 
+AR Path="/60965AD8/6095A4BA" Ref="D17"  Part="1" 
+AR Path="/609665AC/6095A4BA" Ref="D5"  Part="1" 
+AR Path="/60966E8C/6095A4BA" Ref="D8"  Part="1" 
+AR Path="/60967721/6095A4BA" Ref="D11"  Part="1" 
+AR Path="/60967FE8/6095A4BA" Ref="D14"  Part="1" 
+F 0 "D26" V 5989 2632 50  0000 R CNN
+F 1 "Yellow" V 5898 2632 50  0000 R CNN
+F 2 "LED_THT:LED_D5.0mm" H 5950 2750 50  0001 C CNN
+F 3 "~" H 5950 2750 50  0001 C CNN
+	1    5950 2750
+	0    -1   -1   0   
+$EndComp
+$Comp
+L Device:R R28
+U 1 1 6095A89C
+P 5950 1950
+AR Path="/60957159/6095A89C" Ref="R28"  Part="1" 
+AR Path="/60964747/6095A89C" Ref="R25"  Part="1" 
+AR Path="/609650B3/6095A89C" Ref="R22"  Part="1" 
+AR Path="/60965AD8/6095A89C" Ref="R19"  Part="1" 
+AR Path="/609665AC/6095A89C" Ref="R7"  Part="1" 
+AR Path="/60966E8C/6095A89C" Ref="R10"  Part="1" 
+AR Path="/60967721/6095A89C" Ref="R13"  Part="1" 
+AR Path="/60967FE8/6095A89C" Ref="R16"  Part="1" 
+F 0 "R28" H 6020 1996 50  0000 L CNN
+F 1 "1K2" H 6020 1905 50  0000 L CNN
+F 2 "Resistor_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 5880 1950 50  0001 C CNN
+F 3 "~" H 5950 1950 50  0001 C CNN
+	1    5950 1950
+	1    0    0    -1  
+$EndComp
+$Comp
+L Device:R R26
+U 1 1 6095B5E9
+P 4600 1700
+AR Path="/60957159/6095B5E9" Ref="R26"  Part="1" 
+AR Path="/60964747/6095B5E9" Ref="R23"  Part="1" 
+AR Path="/609650B3/6095B5E9" Ref="R20"  Part="1" 
+AR Path="/60965AD8/6095B5E9" Ref="R17"  Part="1" 
+AR Path="/609665AC/6095B5E9" Ref="R5"  Part="1" 
+AR Path="/60966E8C/6095B5E9" Ref="R8"  Part="1" 
+AR Path="/60967721/6095B5E9" Ref="R11"  Part="1" 
+AR Path="/60967FE8/6095B5E9" Ref="R14"  Part="1" 
+F 0 "R26" H 4670 1746 50  0000 L CNN
+F 1 "1K2" H 4670 1655 50  0000 L CNN
+F 2 "Resistor_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 4530 1700 50  0001 C CNN
+F 3 "~" H 4600 1700 50  0001 C CNN
+	1    4600 1700
+	1    0    0    -1  
+$EndComp
+$Comp
+L Device:R R27
+U 1 1 6095BDFA
+P 4600 3800
+AR Path="/60957159/6095BDFA" Ref="R27"  Part="1" 
+AR Path="/60964747/6095BDFA" Ref="R24"  Part="1" 
+AR Path="/609650B3/6095BDFA" Ref="R21"  Part="1" 
+AR Path="/60965AD8/6095BDFA" Ref="R18"  Part="1" 
+AR Path="/609665AC/6095BDFA" Ref="R6"  Part="1" 
+AR Path="/60966E8C/6095BDFA" Ref="R9"  Part="1" 
+AR Path="/60967721/6095BDFA" Ref="R12"  Part="1" 
+AR Path="/60967FE8/6095BDFA" Ref="R15"  Part="1" 
+F 0 "R27" H 4670 3846 50  0000 L CNN
+F 1 "470R" H 4670 3755 50  0000 L CNN
+F 2 "Resistor_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P5.08mm_Horizontal" V 4530 3800 50  0001 C CNN
+F 3 "~" H 4600 3800 50  0001 C CNN
+	1    4600 3800
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	2300 1300 4600 1300
+Wire Wire Line
+	5950 1300 5950 1800
+Wire Wire Line
+	4600 1550 4600 1300
+Connection ~ 4600 1300
+Wire Wire Line
+	4600 1300 5950 1300
+Wire Wire Line
+	5950 2100 5950 2600
+Wire Wire Line
+	4600 1850 4600 2250
+Wire Wire Line
+	4600 2550 4600 2750
+Wire Wire Line
+	4600 3250 4600 3650
+Wire Wire Line
+	2300 5050 4600 5050
+Wire Wire Line
+	4600 3950 4600 5050
+Wire Wire Line
+	2400 2750 4600 2750
+Connection ~ 4600 2750
+Wire Wire Line
+	4600 2750 4600 2950
+Wire Wire Line
+	2350 5900 5950 5900
+Wire Wire Line
+	5950 5900 5950 2900
+$EndSCHEMATC

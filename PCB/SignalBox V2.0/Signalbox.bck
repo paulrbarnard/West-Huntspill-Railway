@@ -1,0 +1,51 @@
+EESchema-DOCLIB  Version 2.0
+#
+$CMP 10K
+D Resistor
+K R res resistor
+F https://docs.rs-online.com/76ca/0900766b8157ae01.pdf
+$ENDCMP
+#
+$CMP 1K2
+D Resistor
+K R res resistor
+F https://docs.rs-online.com/ce35/0900766b8157adf1.pdf
+$ENDCMP
+#
+$CMP 330R
+D Resistor
+K R res resistor
+F https://docs.rs-online.com/8434/0900766b8157ade3.pdf
+$ENDCMP
+#
+$CMP 470R
+D Resistor
+K R res resistor
+F https://docs.rs-online.com/b9c3/0900766b8157ade8.pdf
+$ENDCMP
+#
+$CMP 820R
+D Resistor
+K R res resistor
+F https://docs.rs-online.com/8878/0900766b8157adeb.pdf
+$ENDCMP
+#
+$CMP DIPSwitch
+D Generic connector, single row, 01x02, script generated (kicad-library-utils/schlib/autogen/connector/)
+K connector
+F https://docs.rs-online.com/383f/0900766b80dbe1c6.pdf
+$ENDCMP
+#
+$CMP MCP23017_SP
+D 16-bit I/O expander, I2C, interrupts, w pull-ups, SPDIP-28
+K I2C parallel port expander
+F https://docs.rs-online.com/3aed/0900766b8137eed4.pdf
+$ENDCMP
+#
+$CMP RS_Pro_50_Way_PCB_header
+D Generic connector, double row, 02x25, odd/even pin numbering scheme (row 1 odd numbers, row 2 even numbers), script generated (kicad-library-utils/schlib/autogen/connector/)
+K connector
+F https://docs.rs-online.com/fea6/0900766b815867b9.pdf
+$ENDCMP
+#
+#End Doc Library
