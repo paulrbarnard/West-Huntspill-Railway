@@ -4,7 +4,7 @@ This is a project for the West Huntspill Model Railway https://en-gb.facebook.co
 WHR run model live steam and electric locos on their track.
 
 This project was to replace a failing signal system with something a little more flexible
-The key modules are the SignalBox which provides the control logic and the track display
+The key modules are the SignalBox which provides the control logic with a track display
 and the sensor/lights module that detects the trains and switches the signal lights.
 
 PCB layouts are included in the PCB folder in KiCAD format. Parts lists and UK suppliers are in the excel files in the PCB section.
