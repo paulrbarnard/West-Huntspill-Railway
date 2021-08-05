@@ -10,3 +10,7 @@ and the sensor/lights module that detects the trains and switches the signal lig
 PCB layouts are included in the PCB folder in KiCAD format. Parts lists and UK suppliers are in the excel files in the PCB section.
 
 An overview manual is contained in the .docx file
+
+The PCB layouts and code are released free of charge and can be used or modified in any way you like
+No expressed or implied warrenty or gaurentee is made.
+If you like the project and make use of it consider a donation to the West Huntspill Model Railway
