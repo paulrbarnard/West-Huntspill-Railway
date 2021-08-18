@@ -1443,4 +1443,8 @@ Wire Wire Line
 	3800 6900 3800 5300
 Wire Wire Line
 	3800 5300 4000 5300
+Text Notes 2200 7100 0    50   ~ 0
+Start
+Text Notes 2900 7100 0    50   ~ 0
+Span
 $EndSCHEMATC
