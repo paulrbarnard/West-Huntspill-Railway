@@ -119,7 +119,7 @@ void occupiedSection(int sensor)
   //Serial.println(sensor);
   portB = portB & value;
   writePortB(portB);
-  Serial.print("Track occupied:");
+  Serial.print("YELLOW on for track:");
   Serial.println(sensor);
 }
 
@@ -133,6 +133,8 @@ void clearSection(int sensor)
   //Serial.println(sensor);
   portB = portB | value;
   writePortB(portB);
+  Serial.print("YELLOW off for track:");
+  Serial.println(sensor);
 }
 
 bool compareBuffers(char *buf1, const char *buf2, int num)
@@ -196,6 +198,19 @@ void copyToTxBuffer(const char *str)
   memcpy(txBuffer, str, strlen(str));
 }
 
+
+String binaryString(uint16_t value){
+  char buffer[17] = "0000000000000000";
+  for (int i = 0; i<16; i++){
+    uint16_t test = 0x0001 << i;
+    if ( value & test) {
+      // bit is a '1'
+      buffer[i] = '1';
+    }
+  }
+  return String(buffer);
+}
+
 void sendAddressMessage()
 {
   if (isMaster)
@@ -221,7 +236,12 @@ void sendAddressMessage()
     //udp.write(buffer,33);
     udp.endPacket();
     sendAddress = false;
-    //Serial.println ("Signalbox Address Broadcast");
+    String portAString = binaryString(portA);
+    String portBString = binaryString(portB);
+    Serial.print ("Signalbox Address Broadcast with portA:");
+    Serial.print (portAString);
+    Serial.print (" portB:");
+    Serial.println (portBString);
   }
 }
 
@@ -267,8 +287,8 @@ void trackClear(int sensorID)
       //Serial.print("sensor inactive ");
     }
   }
-  Serial.print("Clearing Track:");
-  Serial.println(previousSensor);
+  //Serial.print("Clearing Track:");
+  //Serial.println(previousSensor);
   if (manualState[previousSensor] == false && stopPressed == false)
   {
     // manual switch is not active so can change to Green
@@ -287,7 +307,7 @@ void checkMessage()
     //Serial.println(message);
     //Serial.print("checkMessage->messageLen: ");
     //Serial.println(messageLen);
-    if (!digitalRead(master))
+    if (isMaster)
     {
       // this is a master so process the messages from sensors
       if (compareBuffers(message, "Sensor", 6))
@@ -375,8 +395,10 @@ void checkMessage()
         byte2 = message[21];
         uint16_t trackStates = byte1 << 8;
         trackStates = trackStates | byte2;
-        writePortA(signalStates);
-        writePortB(trackStates);
+        portA = signalStates;
+        portB = trackStates;
+        writePortA(portA);
+        writePortB(portB);
       }
     }
   }
@@ -400,72 +422,76 @@ void checkMaster()
 
 void checkSwitches()
 {
-  if (digitalRead(clearButton) == false)
+  checkMaster();
+  if (isMaster)
   {
-    if (clearPressed == false)
+    if (digitalRead(clearButton) == false)
     {
-      //Serial.println("Clear button Pressed");
+      if (clearPressed == false)
+      {
+        //Serial.println("Clear button Pressed");
+        if (stopPressed == false)
+        {
+          clearPressed = true;
+          // clear all trains from board if the stop button is not pressed
+          for (int i = 0; i < 16; i++)
+          {
+            clearSection(i);
+            ledGreen(i);
+          }
+        }
+      }
+    }
+    else
+    {
+      clearPressed = false;
+    }
+    if (digitalRead(stopButton) == false)
+    {
+      // stop button is pressed
       if (stopPressed == false)
       {
-        clearPressed = true;
-        // clear all trains from board if the stop button is not pressed
+        // it wasn't pressed before
+        //Serial.println("Stop button pressed");
+        stopPressed = true;
         for (int i = 0; i < 16; i++)
         {
-          clearSection(i);
-          ledGreen(i);
+          // turn all the lights to red
+          ledRed(i);
         }
       }
     }
-  }
-  else
-  {
-    clearPressed = false;
-  }
-  if (digitalRead(stopButton) == false)
-  {
-    // stop button is pressed
-    if (stopPressed == false)
+    else
     {
-      // it wasn't pressed before
-      //Serial.println("Stop button pressed");
-      stopPressed = true;
-      for (int i = 0; i < 16; i++)
+      // stop button not pressed
+      if (stopPressed == true)
       {
-        // turn all the lights to red
-        ledRed(i);
-      }
-    }
-  }
-  else
-  {
-    // stop button not pressed
-    if (stopPressed == true)
-    {
-      // button just released
-      stopPressed = false;
-      for (int i = 0; i < 16; i++)
-      {
-        uint16_t check = 0x0001 << i;
-        //Serial.print("check:");
-        //Serial.print(check);
-        //Serial.print(" portB:");
-        //Serial.println(portB);
-        if ((check & portB)) // portB pin low if train in section
+        // button just released
+        stopPressed = false;
+        for (int i = 0; i < 16; i++)
         {
-          // there is not a train in this section
-          // stop button not pressed so we can go back to green
-          //Serial.println("Track clear so going Green");
-          ledGreen(i);
+          uint16_t check = 0x0001 << i;
+          //Serial.print("check:");
+          //Serial.print(check);
+          //Serial.print(" portB:");
+          //Serial.println(portB);
+          if ((check & portB)) // portB pin low if train in section
+          {
+            // there is not a train in this section
+            // stop button not pressed so we can go back to green
+            //Serial.println("Track clear so going Green");
+            ledGreen(i);
+          }
         }
       }
     }
   }
-  checkMaster();
 }
 
 void demoMode(void)
 {
   // Demo mode
+  stopPressed = false;
   if (!digitalRead(clearButton) && !digitalRead(stopButton))
   {
     // hold down clear and stop buttons to enter test mode
@@ -475,19 +501,18 @@ void demoMode(void)
     writePortA(portA);
     writePortB(portB);
     sendAddressMessage();
-    i = 0;
-    while (!digitalRead(stopButton))
+    while (!digitalRead(stopButton)) // demo will run as long as stop is pressed
     {
       // make a train travel around the track
-      trainDetected(i);
+      trainDetected(i); // simulate having received a train detected message from sensor i
       sendAddressMessage();
-      delay(1000);
+      delay(1500);
       if (!digitalRead(clearButton))
       {
         // hold down the clear button until the final section of track shows occupied
         sensorActive[i + 1] = true;
       }
-      trackClear(i);
+      trackClear(i);  // simulate having received a train clear messagefrom sensor i
       sendAddressMessage();
       delay(5000);
       i++;
@@ -499,6 +524,7 @@ void demoMode(void)
 
     for (i = 0; i < 16; i++)
     {
+      // clear the demo mode sensors active flags
       sensorActive[i] = false;
     }
     portA = 0x0000;
@@ -610,6 +636,7 @@ void setup()
 void loop()
 {
 
+  checkMaster();
   checkMessage();
   checkSwitches();
 

@@ -3,11 +3,11 @@
 #include <WiFiUDP.h>
 
 const char *ssid = "WHR Signals"; // WiFi Network SSID
-const char *pwd = "";   // WiFi network password
-int minDistance = 30;             // Minimum distance to trigger sensor in cm
-int maxDistance = 60;             // Maximum distance to trigger sensor in cm
-#define debounceThreshold 40      // Howmany times to see the sensor active before operating
-#define retriggerThreshold 100    //  How many times to see the sensor inactive to enable re trigger
+const char *pwd = "";            // WiFi network password
+int minDistance = 30;                      // Minimum distance to trigger sensor in cm
+int maxDistance = 60;                      // Maximum distance to trigger sensor in cm
+#define debounceThreshold 40               // Howmany times to see the sensor active before operating
+#define retriggerThreshold 100             //  How many times to see the sensor inactive to enable re trigger
 
 const char *signalboxAddress = "255.255.255.255"; // ensure the storage is large enough
 const int udpPort = 44444;
@@ -172,6 +172,21 @@ void setup()
   sensorID = getSensorID();
 }
 
+String binaryString(uint16_t value)
+{
+  char buffer[17] = "0000000000000000";
+  for (int i = 0; i < 16; i++)
+  {
+    uint16_t test = 0x0001 << i;
+    if (value & test)
+    {
+      // bit is a '1'
+      buffer[i] = '1';
+    }
+  }
+  return String(buffer);
+}
+
 bool compareBuffers(char *buf1, const char *buf2, int num)
 {
   if (num == 0)
@@ -242,47 +257,48 @@ void checkSignalboxMessage()
         haveSignalboxAddress = true;
         digitalWrite(activePin, LOW); // turn on the LED to show we have active Signalbox
       }
-    }
-    // process the light status
-    uint8_t byte1 = message[18];
-    uint8_t byte2 = message[19];
-    uint16_t signalStates = byte1 << 8;
-    signalStates = signalStates | byte2;
-    byte1 = message[20];
-    byte2 = message[21];
-    uint16_t trackStates = byte1 << 8;
-    trackStates = trackStates | byte2;
-    // set the signal to the signalbox value
-    //Serial.print("signalStates:");
-    //Serial.println(signalStates, BIN);
-    uint16_t myLight = signalStates >> sensorID;
-    myLight = myLight & 0x01;
-    uint16_t theTrack = trackStates >> sensorID;
-    myTrack = theTrack & 0x01;
-    if (flashing == false)
-    {
-      if (myLight != 0)
+
+      // process the light status
+      uint8_t byte1 = message[18];
+      uint8_t byte2 = message[19];
+      uint16_t signalStates = byte1 << 8;
+      signalStates = signalStates | byte2;
+      byte1 = message[20];
+      byte2 = message[21];
+      uint16_t trackStates = byte1 << 8;
+      trackStates = trackStates | byte2;
+      // set the signal to the signalbox value
+      //Serial.print("signalStates from signalbox:");
+      //Serial.println(binaryString(signalStates));
+      uint16_t myLight = signalStates >> sensorID;
+      myLight = myLight & 0x0001;
+      uint16_t theTrack = trackStates >> sensorID;
+      myTrack = theTrack & 0x0001;
+      if (flashing == false)
       {
-        if (lastLight != myLight)
+        if (myLight != 0)
         {
-          Serial.println("myLight: RED");
-          lastLight = myLight;
+          if (lastLight != myLight)
+          {
+            Serial.println("myLight: RED");
+            lastLight = myLight;
+          }
+          digitalWrite(output1Pin, HIGH); // red on
+          digitalWrite(output2Pin, LOW);  // green off
+          autoStopActive = true;
         }
-        digitalWrite(output1Pin, HIGH); // red on
-        digitalWrite(output2Pin, LOW);  // green off
-        autoStopActive = true;
-      }
-      else
-      {
-        if (lastLight != myLight)
+        else
         {
-          Serial.println("myLight: GREEN");
-          lastLight = myLight;
+          if (lastLight != myLight)
+          {
+            Serial.println("myLight: GREEN");
+            lastLight = myLight;
+          }
+          digitalWrite(output1Pin, LOW);  // red off
+          digitalWrite(output2Pin, HIGH); // green on
+          autoStopActive = false;
+          manualStopActive = false; // force resent of manual stop if the signalbox clears
         }
-        digitalWrite(output1Pin, LOW);  // red off
-        digitalWrite(output2Pin, HIGH); // green on
-        autoStopActive = false;
-        manualStopActive = false; // force resent of manual stop if the signalbox clears
       }
     }
   }
@@ -424,8 +440,8 @@ void setDistance(void)
   static int lastSpan = 0;
   int startReading = analogRead(sensorStart);
   int spanReading = analogRead(sensorSpan);
-  startReading = startReading >> 4; // remove noise 
-  spanReading = spanReading >> 4;   // remove noise 
+  startReading = startReading >> 4; // remove noise
+  spanReading = spanReading >> 4;   // remove noise
   if (lastStart != startReading || lastSpan != spanReading)
   {
     lastStart = startReading;
