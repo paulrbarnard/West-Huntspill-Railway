@@ -287,7 +287,7 @@ void checkMessage()
     //Serial.println(message);
     //Serial.print("checkMessage->messageLen: ");
     //Serial.println(messageLen);
-    if (master)
+    if (!digitalRead(master))
     {
       // this is a master so process the messages from sensors
       if (compareBuffers(message, "Sensor", 6))
