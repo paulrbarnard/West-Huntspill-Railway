@@ -4,15 +4,16 @@
 #include <WiFiUDP.h>
 #include <Wire.h>
 
-const char *ssid = "WHR Signals";
-const char *pwd = ""; // set for suitable password
+//const char *ssid = "WHR Signals";
+const char *ssid = "Barnard Home Network";
+const char *pwd = "0D03908CE5"; // set for suitable password
 const int udpPort = 44444;
 WiFiUDP udp;
 uint8_t txBuffer[50] = "";
 uint8_t rxBuffer[50] = "";
 IPAddress lastIP;
 
-IPAddress sensorAddress[16];
+//IPAddress sensorAddress[16];
 
 bool sensorActive[16] = {false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false};
 bool seenActive[16] = {false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false};
@@ -198,12 +199,14 @@ void copyToTxBuffer(const char *str)
   memcpy(txBuffer, str, strlen(str));
 }
 
-
-String binaryString(uint16_t value){
+String binaryString(uint16_t value)
+{
   char buffer[17] = "0000000000000000";
-  for (int i = 0; i<16; i++){
+  for (int i = 0; i < 16; i++)
+  {
     uint16_t test = 0x0001 << i;
-    if ( value & test) {
+    if (value & test)
+    {
       // bit is a '1'
       buffer[i] = '1';
     }
@@ -213,6 +216,8 @@ String binaryString(uint16_t value){
 
 void sendAddressMessage()
 {
+  static uint16_t lastPortA = 0;
+  static uint16_t lastPortB = 0;
   if (isMaster)
   {
     //  This bradcasts the signalbox IP address if the signalbox is a master
@@ -236,28 +241,19 @@ void sendAddressMessage()
     //udp.write(buffer,33);
     udp.endPacket();
     sendAddress = false;
-    String portAString = binaryString(portA);
-    String portBString = binaryString(portB);
-    Serial.print ("Signalbox Address Broadcast with portA:");
-    Serial.print (portAString);
-    Serial.print (" portB:");
-    Serial.println (portBString);
+    if (lastPortA != portA || lastPortB != portB)
+    {
+      String portAString = binaryString(portA);
+      String portBString = binaryString(portB);
+      Serial.print("Signalbox Address Broadcast with portA:");
+      Serial.print(portAString);
+      Serial.print(" portB:");
+      Serial.println(portBString);
+      lastPortA = portA;
+      lastPortB = portB;
+    }
   }
 }
-
-// void sendMessage(int sensor, const char *mess)
-// {
-//   int lenMess = strlen(mess);
-//   copyToTxBuffer(mess);
-//   udp.beginPacket(sensorAddress[sensor], udpPort);
-//   udp.write(txBuffer, lenMess);
-//   udp.endPacket();
-//   sendAddress = false;
-//   //Serial.print("Sent message: ");
-//   //Serial.print(mess);
-//   //Serial.print(" to sensor: ");
-//   //Serial.println(sensor);
-// }
 
 void trainDetected(int sensorID)
 {
@@ -299,6 +295,8 @@ void trackClear(int sensorID)
 
 void checkMessage()
 {
+  static uint16_t lastPortA = 0;
+  static uint16_t lastPortB = 0;
   char *message = getUdpMessage();
   int messageLen = strlen(message);
   if (messageLen > 5)
@@ -323,7 +321,7 @@ void checkMessage()
             Serial.print("Aquired Sensor:");
             Serial.println(sensorID);
           }
-          sensorAddress[sensorID] = lastIP;
+          //sensorAddress[sensorID] = lastIP;
           sensorActive[sensorID] = true;
           seenActive[sensorID] = true; // indicate seen in this cycle
           //Serial.print("Seen Sensor:");
@@ -375,7 +373,11 @@ void checkMessage()
             }
           }
         }
-        else
+        else if (compareBuffersFrom(message, "Force Track Clear", 9, 17)){
+          // force clear of this sensors section of track (used for steaming bays)
+          uint16_t check = 0x0001 << sensorID;
+          portB = portB | check;
+        } else 
         {
           //Serial.println("Track occupied so staying Red");
         }
@@ -399,6 +401,14 @@ void checkMessage()
         portB = trackStates;
         writePortA(portA);
         writePortB(portB);
+        if(lastPortA != portA || lastPortB != portB){
+          Serial.print("portA:");
+          Serial.print(binaryString(portA));
+          Serial.print("  portB:");
+          Serial.println(binaryString(portB));
+          lastPortA = portA;
+          lastPortB = portB;
+        }
       }
     }
   }
@@ -512,7 +522,7 @@ void demoMode(void)
         // hold down the clear button until the final section of track shows occupied
         sensorActive[i + 1] = true;
       }
-      trackClear(i);  // simulate having received a train clear messagefrom sensor i
+      trackClear(i); // simulate having received a train clear messagefrom sensor i
       sendAddressMessage();
       delay(5000);
       i++;
@@ -625,10 +635,6 @@ void setup()
     if (stopPressed == true)
     {
       ledRed(i);
-    }
-    else
-    {
-      ledGreen(i);
     }
   }
 }

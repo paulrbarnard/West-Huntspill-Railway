@@ -2,19 +2,21 @@
 #include <WiFi.h>
 #include <WiFiUDP.h>
 
-const char *ssid = "WHR Signals"; // WiFi Network SSID
-const char *pwd = "";            // WiFi network password
+//const char *ssid = "WHR Signals"; // WiFi Network SSID
+const char *ssid = "Barnard Home Network"; // WiFi Network SSID
+const char *pwd = "0D03908CE5";            // WiFi network password
 int minDistance = 30;                      // Minimum distance to trigger sensor in cm
 int maxDistance = 60;                      // Maximum distance to trigger sensor in cm
 #define debounceThreshold 40               // Howmany times to see the sensor active before operating
 #define retriggerThreshold 100             //  How many times to see the sensor inactive to enable re trigger
+#define messageRepeat 3                    // define how many times to repreat a message
 
 const char *signalboxAddress = "255.255.255.255"; // ensure the storage is large enough
 const int udpPort = 44444;
 const char *payload[20];
 WiFiUDP udp;
-uint8_t txBuffer[50] = "";
-uint8_t rxBuffer[50] = "";
+uint8_t txBuffer[150] = "";
+uint8_t rxBuffer[150] = "";
 
 #define echoPin 27     // Echo of HC-SR04
 #define trigPin 26     // Trig of HC-SR04
@@ -89,14 +91,14 @@ void setup()
   pinMode(wifiPin, OUTPUT);
   pinMode(output1Pin, OUTPUT);
   pinMode(output2Pin, OUTPUT);
-  pinMode(manualStop, INPUT);
-  pinMode(addb0, INPUT);
-  pinMode(addb1, INPUT);
-  pinMode(addb2, INPUT);
-  pinMode(addb3, INPUT);
-  pinMode(localStop, INPUT);
-  pinMode(localSense, INPUT);
-  pinMode(joinWiFiHub, INPUT);
+  pinMode(manualStop, INPUT_PULLUP);
+  pinMode(addb0, INPUT_PULLUP);
+  pinMode(addb1, INPUT_PULLUP);
+  pinMode(addb2, INPUT_PULLUP);
+  pinMode(addb3, INPUT_PULLUP);
+  pinMode(localStop, INPUT_PULLUP);
+  pinMode(localSense, INPUT_PULLUP);
+  pinMode(joinWiFiHub, INPUT_PULLUP);
   pinMode(sensorStart, INPUT);
   pinMode(sensorSpan, INPUT);
   digitalWrite(sensedPin, HIGH);
@@ -124,9 +126,17 @@ void setup()
   {
     Serial.println("Supports a local stop button");
   }
+  else
+  {
+    Serial.println("Local Stop disabled");
+  }
   if (digitalRead(localSense))
   {
     Serial.println("Supports a local train sensor");
+  }
+  else
+  {
+    Serial.println("Train sensor disabled");
   }
 
   debounce = 0;
@@ -223,6 +233,11 @@ void copyToTxBuffer(const char *str)
   memcpy(txBuffer, str, strlen(str) + 1);
 }
 
+void copyToBuffer(char *theBuffer, const char *str)
+{
+  memcpy(theBuffer, str, strlen(str) + 1);
+}
+
 void checkSignalboxMessage()
 {
   static uint16_t lastLight = 0xFFFF;
@@ -309,45 +324,44 @@ void sendMessageToSignalbox(const char *mess)
   int lenMess = strlen(mess);
   copyToTxBuffer(mess);
   txBuffer[7] = sensorID + 48; // make it ASCII for send
-  //Serial.print("Sending to IP Address:");
-  //Serial.print(signalboxAddress);
-  //Serial.print(" on port:");
-  //Serial.print(udpPort);
-  //Serial.print(" buffer:");
-  //Serial.println((const char *)txBuffer);
-  udp.beginPacket(signalboxAddress, udpPort);
-  udp.write(txBuffer, lenMess + 1);
-  udp.endPacket();
+  for (int i = 1; i <= messageRepeat; i++)
+  {
+    udp.beginPacket("255.255.255.255", udpPort);
+    udp.write(txBuffer, lenMess + 1);
+    udp.endPacket();
+    //Serial.print("Sent:");
+    //Serial.println(mess);
+  }
 }
 
 void checkManualStop()
 {
-  if (digitalRead(localStop))
-  { // This SensorLights module handles a local stop button
-    bool currentState = !digitalRead(manualStop);
-    if (manualStopActive == false && currentState == true)
+  bool currentState = !digitalRead(manualStop);
+  if (manualStopActive == false && currentState == true)
+  {
+    // button pressed and it wasn't pressed before
+    manualStopActive = true;
+    sendMessageToSignalbox("Sensor:  Manual Stop Active");
+    Serial.println("Manual Stop button pressed");
+  }
+  else if (manualStopActive == true && currentState == false)
+  {
+    // button just released
+    manualStopActive = false;
+    sendMessageToSignalbox("Sensor:  Manual Stop Released");
+    Serial.println("Manual Stop button released");
+    if (autoStopActive == false)
     {
-      // button pressed and it wasn't pressed before
-      manualStopActive = true;
-      sendMessageToSignalbox("Sensor:  Manual Stop Active");
-      //Serial.println("Manual Stop button pressed");
+      // automatic light state would have been green
+      //digitalWrite(output1Pin, LOW);  // red off
+      //digitalWrite(output2Pin, HIGH); // green on
     }
-    else if (manualStopActive == true && currentState == false)
+    else
     {
-      // button just released
-      manualStopActive = false;
-      sendMessageToSignalbox("Sensor:  Manual Stop Released");
-      //Serial.println("Manual Stop button released");
-      if (autoStopActive == false)
+      if (myTrack == false)
       {
-        // automatic light state would have been green
-        //digitalWrite(output1Pin, LOW);  // red off
-        //digitalWrite(output2Pin, HIGH); // green on
-      }
-      else
-      {
-        if (myTrack == false)
-        {
+        if (digitalRead(localStop))
+        { // This SensorLights module handles a local stop button in normal mode
           // my track is occupied so flash the LED
           flashing = true; // stop the auto light setting
           for (int i = 0; i < 3; i++)
@@ -356,10 +370,20 @@ void checkManualStop()
             delay(500);
             digitalWrite(output1Pin, HIGH); // red on
             delay(500);
+            digitalWrite(output1Pin, LOW); // red off
+            delay(500);
+            digitalWrite(output1Pin, HIGH); // red on
+            delay(500);
           }
         }
-        flashing = false;
+        else
+        {
+          // This SensorLights module handles local stop with forced clear on release
+          Serial.println("Force Track clear");
+          sendMessageToSignalbox("Sensor:  Force Clear");
+        }
       }
+      flashing = false;
     }
   }
 }
@@ -379,6 +403,7 @@ void checkSensor(void)
 {
   if (digitalRead(localSense))
   {
+    //Serial.println("Reading distance sensor");
     // Clears the trigPin condition
     digitalWrite(trigPin, LOW);
     delayMicroseconds(2);
@@ -393,6 +418,10 @@ void checkSensor(void)
     if ((distance >= minDistance) && (distance <= maxDistance))
     {
       // detected object
+      //Serial.print("measured distance:");
+      //Serial.print(distance);
+      //Serial.print("cm - debounce:");
+      //Serial.println(debounce);
       debounce = debounce + 1;
       if (debounce >= debounceThreshold)
       {
@@ -438,6 +467,8 @@ void setDistance(void)
 {
   static int lastStart = 0;
   static int lastSpan = 0;
+  static int lastMinDistance = 0;
+  static int lastMaxDistance = 0;
   int startReading = analogRead(sensorStart);
   int spanReading = analogRead(sensorSpan);
   startReading = startReading >> 4; // remove noise
@@ -453,11 +484,27 @@ void setDistance(void)
     //Serial.print(startReading);
     //Serial.print("   spanReading:");
     //Serial.println(spanReading);
-    //Serial.print("minDistance:");
-    //Serial.print(minDistance);
-    //Serial.print("cm  maxDistance:");
-    //Serial.print(maxDistance);
-    //Serial.println("cm");
+    if (abs(minDistance - lastMinDistance) > 10 || abs(maxDistance - lastMaxDistance) > 10)
+    {
+      //Serial.print("minDistance:");
+      //Serial.print(minDistance);
+      //Serial.print("cm  maxDistance:");
+      //Serial.print(maxDistance);
+      //Serial.println("cm");
+      lastMinDistance = minDistance;
+      lastMaxDistance = maxDistance;
+      char theBuffer[100];
+      char theNumber[5];
+      copyToBuffer(&theBuffer[0], "Sensor:  Range Adjustment minDistance:     ");
+      sprintf(theNumber, "%4d", minDistance);
+      copyToBuffer(&theBuffer[38], theNumber);
+      copyToBuffer(&theBuffer[42], "cm  maxDistance:     ");
+      sprintf(theNumber, "%4d", maxDistance);
+      copyToBuffer(&theBuffer[58], theNumber);
+      copyToBuffer(&theBuffer[62], "cm");
+      Serial.println(theBuffer);
+      sendMessageToSignalbox(theBuffer);
+    }
   }
 }
 
