@@ -5,7 +5,7 @@ https://en-gb.facebook.com/pages/category/Arts---Entertainment/West-Huntspill-Ra
 
 WHR run model live steam and electric locos on their track.
 
-This project was to replace a failing signal system with something a little more flexible
+This project was to replace the old signal system with something a little more flexible
 The key modules are the SignalBox which provides the control logic with a track display
 and the sensor/lights module that detects the trains and switches the signal lights.
 

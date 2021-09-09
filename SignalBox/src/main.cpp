@@ -5,8 +5,8 @@
 #include <Wire.h>
 
 //const char *ssid = "WHR Signals";
-const char *ssid = "Barnard Home Network";
-const char *pwd = "0D03908CE5"; // set for suitable password
+const char *ssid = "WHRSignals";
+const char *pwd = ""; // set for suitable password
 const int udpPort = 44444;
 WiFiUDP udp;
 uint8_t txBuffer[50] = "";
@@ -373,11 +373,13 @@ void checkMessage()
             }
           }
         }
-        else if (compareBuffersFrom(message, "Force Track Clear", 9, 17)){
+        else if (compareBuffersFrom(message, "Force Track Clear", 9, 17))
+        {
           // force clear of this sensors section of track (used for steaming bays)
           uint16_t check = 0x0001 << sensorID;
           portB = portB | check;
-        } else 
+        }
+        else
         {
           //Serial.println("Track occupied so staying Red");
         }
@@ -401,7 +403,8 @@ void checkMessage()
         portB = trackStates;
         writePortA(portA);
         writePortB(portB);
-        if(lastPortA != portA || lastPortB != portB){
+        if (lastPortA != portA || lastPortB != portB)
+        {
           Serial.print("portA:");
           Serial.print(binaryString(portA));
           Serial.print("  portB:");
@@ -498,6 +501,18 @@ void checkSwitches()
   }
 }
 
+void demoFlash(int pulses){
+  static bool ledState = HIGH;
+  for (int j=0; j<pulses; j++){
+      if (ledState = !ledState) {
+        digitalWrite(signalsActive, HIGH); 
+      } else {
+        digitalWrite(signalsActive, LOW); 
+      }
+      delay(500);
+  }
+}
+
 void demoMode(void)
 {
   // Demo mode
@@ -516,7 +531,7 @@ void demoMode(void)
       // make a train travel around the track
       trainDetected(i); // simulate having received a train detected message from sensor i
       sendAddressMessage();
-      delay(1500);
+      demoFlash(3);
       if (!digitalRead(clearButton))
       {
         // hold down the clear button until the final section of track shows occupied
@@ -524,7 +539,7 @@ void demoMode(void)
       }
       trackClear(i); // simulate having received a train clear messagefrom sensor i
       sendAddressMessage();
-      delay(5000);
+      demoFlash(10);
       i++;
       if (sensorActive[i] == false)
       {

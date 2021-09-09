@@ -3,8 +3,8 @@
 #include <WiFiUDP.h>
 
 //const char *ssid = "WHR Signals"; // WiFi Network SSID
-const char *ssid = "Barnard Home Network"; // WiFi Network SSID
-const char *pwd = "0D03908CE5";            // WiFi network password
+const char *ssid = "WHRSignals"; // WiFi Network SSID
+const char *pwd = "";            // WiFi network password
 int minDistance = 30;                      // Minimum distance to trigger sensor in cm
 int maxDistance = 60;                      // Maximum distance to trigger sensor in cm
 #define debounceThreshold 40               // Howmany times to see the sensor active before operating
@@ -124,11 +124,11 @@ void setup()
   Serial.println(sensorID);
   if (digitalRead(localStop))
   {
-    Serial.println("Supports a local stop button");
+    Serial.println("Standard stop button");
   }
   else
   {
-    Serial.println("Local Stop disabled");
+    Serial.println("Forced clear stop Button");
   }
   if (digitalRead(localSense))
   {
