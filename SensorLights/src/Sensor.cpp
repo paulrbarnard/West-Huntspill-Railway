@@ -1,15 +1,13 @@
 #include <Arduino.h>
-#include <WiFi.h>
+#include <myWiFi.h>
 #include <WiFiUDP.h>
 
-//const char *ssid = "WHR Signals"; // WiFi Network SSID
-const char *ssid = "WHRSignals"; // WiFi Network SSID
-const char *pwd = "";            // WiFi network password
-int minDistance = 30;                      // Minimum distance to trigger sensor in cm
-int maxDistance = 60;                      // Maximum distance to trigger sensor in cm
-#define debounceThreshold 40               // Howmany times to see the sensor active before operating
-#define retriggerThreshold 100             //  How many times to see the sensor inactive to enable re trigger
-#define messageRepeat 3                    // define how many times to repreat a message
+#define softwareVersion 1.20
+int minDistance = 50;          // Minimum distance to trigger sensor in cm
+int maxDistance = 100;         // Maximum distance to trigger sensor in cm
+#define debounceThreshold 40   // Howmany times to see the sensor active before operating
+#define retriggerThreshold 100 //  How many times to see the sensor inactive to enable re trigger
+#define messageRepeat 3        // define how many times to repreat a message
 
 const char *signalboxAddress = "255.255.255.255"; // ensure the storage is large enough
 const int udpPort = 44444;
@@ -29,8 +27,8 @@ uint8_t rxBuffer[150] = "";
 #define sensorStart 36 // ADC input for sensor start distance
 #define sensorSpan 39  // ADCinput for sensor span distance
 
-#define localStop 14   // high if using local stop button
-#define localSense 13  // high if using local sensor
+#define localStop 14   // high if using standard stop button, low for forced stop button (clears train on release)
+#define localSense 13  // high if using local sensor settings, low if using remote sensor settings
 #define joinWiFiHub 25 // high is connecting to wifi network (low then create the network)
 
 #define addb0 32 // address lines to set sensorID
@@ -50,6 +48,10 @@ bool haveSignalboxAddress;
 bool manualStopActive = false;
 bool autoStopActive = false;
 bool myTrack = false;
+
+bool remoteSettings = false;
+bool forcedStopButton = false;
+bool localWiFi = true;
 
 hw_timer_t *timer = NULL;
 bool sendAlive = false;
@@ -80,6 +82,40 @@ uint8_t getSensorID()
     iD = iD + 8;
   }
   return iD;
+}
+
+void readConfig()
+{
+  if (digitalRead(localStop) && forcedStopButton == true)
+  {
+    forcedStopButton = false;
+    Serial.println("Standard stop button");
+  }
+  if (digitalRead(localStop) == false && forcedStopButton == false)
+  {
+    forcedStopButton = true;
+    Serial.println("Forced clear stop Button");
+  }
+  if (digitalRead(localSense) && remoteSettings == true)
+  {
+    remoteSettings = false;
+    Serial.println("Uses local sensor adjust values");
+  }
+  if (digitalRead(localSense) == false && remoteSettings == false)
+  {
+    remoteSettings = true;
+    Serial.println("Uses Remote sensor adjust");
+  }
+  if (digitalRead(joinWiFiHub) == false && localWiFi == false)
+  {
+    localWiFi = true;
+    Serial.println("provided local WiFi");
+  }
+  if (digitalRead(joinWiFiHub) == true && localWiFi == true)
+  {
+    localWiFi = false;
+    Serial.println("joins remote WiFi");
+  }
 }
 
 void setup()
@@ -122,51 +158,24 @@ void setup()
     Serial.print("West Huntspill Railway Sensor Module and WiFi Hub activated with ID:");
   }
   Serial.println(sensorID);
-  if (digitalRead(localStop))
-  {
-    Serial.println("Standard stop button");
-  }
-  else
-  {
-    Serial.println("Forced clear stop Button");
-  }
-  if (digitalRead(localSense))
-  {
-    Serial.println("Supports a local train sensor");
-  }
-  else
-  {
-    Serial.println("Train sensor disabled");
-  }
+  Serial.printf("Software Version: %.2f\n", softwareVersion);
+
+  remoteSettings = digitalRead(localSense);  // force the read config to update first time
+  forcedStopButton = digitalRead(localStop); // force the read config to update first time
+  localWiFi = digitalRead(joinWiFiHub);
+  readConfig();
 
   debounce = 0;
   detected = false;
   retrigger = 0;
   if (digitalRead(joinWiFiHub) == true)
   { // join the wifi network
-    WiFi.begin(ssid, pwd);
-    while (WiFi.status() != WL_CONNECTED)
-    {
-      delay(500);
-      Serial.print(".");
-    }
-    Serial.println("");
-    Serial.print("Connected to:");
-    Serial.print(ssid);
-    Serial.print(" IP Address:");
-    Serial.println(WiFi.localIP());
+    setupWiFi();
   }
   else
   {
-    // create the wifi network
-    Serial.print("Setting AP (Access Point)…");
-    // Remove the password parameter, if you want the AP (Access Point) to be open
-    WiFi.softAP(ssid, pwd);
-
-    IPAddress IP = WiFi.softAPIP();
-    Serial.print("AP IP address: ");
-    Serial.println(IP);
-  }
+    createWiFi();
+   }
   digitalWrite(wifiPin, LOW); // indicate we are connected to WiFi
   haveSignalboxAddress = false;
 
@@ -177,7 +186,7 @@ void setup()
   sendAlive = false;
   timer = timerBegin(0, 80, true);
   timerAttachInterrupt(timer, &timerInterrupt, true);
-  timerAlarmWrite(timer, 10000000, true);
+  timerAlarmWrite(timer, 10000000, true); // 1 second timer interrupt
   timerAlarmEnable(timer);
   sensorID = getSensorID();
 }
@@ -207,10 +216,10 @@ bool compareBuffers(char *buf1, const char *buf2, int num)
     {
       return false;
     }
-    //Serial.print("buf1:");
-    //Serial.print(buf1[i]);
-    //Serial.print("  buf2:");
-    //Serial.println(buf2[i]);
+    // Serial.print("buf1:");
+    // Serial.print(buf1[i]);
+    // Serial.print("  buf2:");
+    // Serial.println(buf2[i]);
   }
   return true;
 }
@@ -219,11 +228,11 @@ char *getUdpMessage()
 {
   udp.parsePacket();
   rxBuffer[0] = 0;
-  if (udp.read(rxBuffer, 50) > 0)
+  if (udp.read(rxBuffer, 69) > 0)
   {
     // received a message
-    //Serial.print("getUdpMessage->Received: ");
-    //Serial.println((char *)buffer);
+    // Serial.print("getUdpMessage->Received: ");
+    // Serial.println((char *)buffer);
   }
   return (char *)rxBuffer;
 }
@@ -243,32 +252,42 @@ void checkSignalboxMessage()
   static uint16_t lastLight = 0xFFFF;
   char *message = getUdpMessage();
   int messageLen = strlen(message);
-  //Serial.print("checkSignalboxMessage->messageLen: ");
-  //Serial.println(messageLen);
+  // Serial.print("checkSignalboxMessage->messageLen: ");
+  // Serial.println(messageLen);
+  //  broadcast message to the signals sent every 500ms by the signal box
+  //                     led           Sensor setting
+  //                     stat      start distance, span
+  //                     |--||------------------------------|
+  //  "Signalbox Address:AaBb00112233445566778899aabbccddeeff255.255.255.255"
+  //   0000000000111111111122222222223333333333444444444455555555556666666666
+  //   0123456789012345678901234567890123456789012345678901234567890123456789
+  //
+  //   sensor start distance = 8bit value (cm) + 50 cm minimum offset
+  //   sensor span distance = 8bit value (cm)
   if (messageLen > 1)
   {
-    //Serial.print("checkSignalboxMessage->message: ");
-    //Serial.println(message);
+    // Serial.print("checkSignalboxMessage->message: ");
+    // Serial.println(message);
     if (compareBuffers(message, "Signalbox Address:", 18))
     {
       // Signalbox address message (this is broadcast so all sensors get it)
-      memcpy(&payload, &message[22], 16);
-      //Serial.print("checkSignalboxMessage->payload: ");
-      //Serial.println((const char *)payload);
+      memcpy(&payload, &message[54], 16); // get the signalbox address from the message
+      // Serial.print("checkSignalboxMessage->payload: ");
+      // Serial.println((const char *)payload);
       if (compareBuffers((char *)signalboxAddress, (const char *)payload, strlen(signalboxAddress)) == false)
       { // the address received is different to the one we had
         signalboxAddress = (const char *)payload;
-        //memcpy(&signalboxAddress, payload, 20);
+        // memcpy(&signalboxAddress, payload, 20);
         Serial.println("");
         Serial.print("Received new signalbox address:");
         Serial.println(signalboxAddress);
         haveSignalboxAddress = true;
         digitalWrite(activePin, LOW); // turn on the LED to show we have active Signalbox
-        //digitalWrite(output2Pin, HIGH); // turn on the Green light once we have established a link
+        // digitalWrite(output2Pin, HIGH); // turn on the Green light once we have established a link
       }
       else
       {
-        //Serial.println("checkSignalboxMessage->signalboxAddress == payload");
+        // Serial.println("checkSignalboxMessage->signalboxAddress == payload");
         haveSignalboxAddress = true;
         digitalWrite(activePin, LOW); // turn on the LED to show we have active Signalbox
       }
@@ -283,8 +302,8 @@ void checkSignalboxMessage()
       uint16_t trackStates = byte1 << 8;
       trackStates = trackStates | byte2;
       // set the signal to the signalbox value
-      //Serial.print("signalStates from signalbox:");
-      //Serial.println(binaryString(signalStates));
+      // Serial.print("signalStates from signalbox:");
+      // Serial.println(binaryString(signalStates));
       uint16_t myLight = signalStates >> sensorID;
       myLight = myLight & 0x0001;
       uint16_t theTrack = trackStates >> sensorID;
@@ -315,6 +334,25 @@ void checkSignalboxMessage()
           manualStopActive = false; // force resent of manual stop if the signalbox clears
         }
       }
+
+      if (remoteSettings == true)
+      {
+        // process the sensor settings
+        int receivedMinDistance = (message[22 + (sensorID * 2)]) + 50;
+        int receivedMaxDistance = receivedMinDistance + (message[23 + (sensorID * 2)]);
+        // Serial.printf("Received minDistance: %d", receivedMinDistance);
+        // Serial.printf("  maxDistance: %d\n", receivedMaxDistance);
+        if (receivedMinDistance != minDistance)
+        {
+          minDistance = receivedMinDistance;
+          Serial.printf("Updated minDistance to: %dcm\n", minDistance);
+        }
+        if (receivedMaxDistance != maxDistance)
+        {
+          maxDistance = receivedMaxDistance;
+          Serial.printf("Updated maxDistance to: %dcm\n", maxDistance);
+        }
+      }
     }
   }
 }
@@ -329,8 +367,8 @@ void sendMessageToSignalbox(const char *mess)
     udp.beginPacket("255.255.255.255", udpPort);
     udp.write(txBuffer, lenMess + 1);
     udp.endPacket();
-    //Serial.print("Sent:");
-    //Serial.println(mess);
+    // Serial.print("Sent:");
+    // Serial.println(mess);
   }
 }
 
@@ -353,14 +391,14 @@ void checkManualStop()
     if (autoStopActive == false)
     {
       // automatic light state would have been green
-      //digitalWrite(output1Pin, LOW);  // red off
-      //digitalWrite(output2Pin, HIGH); // green on
+      // digitalWrite(output1Pin, LOW);  // red off
+      // digitalWrite(output2Pin, HIGH); // green on
     }
     else
     {
       if (myTrack == false)
       {
-        if (digitalRead(localStop))
+        if (forcedStopButton == false)
         { // This SensorLights module handles a local stop button in normal mode
           // my track is occupied so flash the LED
           flashing = true; // stop the auto light setting
@@ -390,74 +428,84 @@ void checkManualStop()
 
 void sendAliveMessage()
 {
-  copyToTxBuffer("Sensor:                ");
-  txBuffer[7] = sensorID + 48;
+  // alive message format
+  //        i  ver    ss
+  // Sensor:dv01.20frwtp
+  // 0000000000111111111122222222223
+  // 0123456789012345678901234567890
+  // board links sent as ascii '0' or '1'
+  // f = forced clear
+  // r = remote settings
+  // w = wifi
+  char buff[20] = "";
+  sprintf(buff, "Sensor:%Xv%05.2fl%d%d%d", sensorID, softwareVersion, forcedStopButton, remoteSettings, localWiFi);
+  copyToTxBuffer(buff);
+  txBuffer[18] = minDistance - 50;
+  txBuffer[19] = maxDistance - minDistance;
+  // Serial.printf("Sending: %s\n", txBuffer);
   udp.beginPacket("255.255.255.255", udpPort);
   udp.write(txBuffer, 20);
   udp.endPacket();
-  //Serial.println("Sensor Alive message sent");
+  // Serial.println("Sensor Alive message sent");
   sendAlive = false;
 }
 
 void checkSensor(void)
 {
-  if (digitalRead(localSense))
+  // Serial.println("Reading distance sensor");
+  //  Clears the trigPin condition
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  // Sets the trigPin HIGH (ACTIVE) for 10 microseconds
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+  // Reads the echoPin, returns the sound wave travel time in microseconds
+  duration = pulseIn(echoPin, HIGH);
+  // Calculating the distance
+  distance = duration * 0.034 / 2; // Speed of sound wave divided by 2 (out and back)
+  if ((distance >= minDistance) && (distance <= maxDistance))
   {
-    //Serial.println("Reading distance sensor");
-    // Clears the trigPin condition
-    digitalWrite(trigPin, LOW);
-    delayMicroseconds(2);
-    // Sets the trigPin HIGH (ACTIVE) for 10 microseconds
-    digitalWrite(trigPin, HIGH);
-    delayMicroseconds(10);
-    digitalWrite(trigPin, LOW);
-    // Reads the echoPin, returns the sound wave travel time in microseconds
-    duration = pulseIn(echoPin, HIGH);
-    // Calculating the distance
-    distance = duration * 0.034 / 2; // Speed of sound wave divided by 2 (out and back)
-    if ((distance >= minDistance) && (distance <= maxDistance))
+    // detected object
+    // Serial.print("measured distance:");
+    // Serial.print(distance);
+    // Serial.print("cm - debounce:");
+    // Serial.println(debounce);
+    debounce = debounce + 1;
+    if (debounce >= debounceThreshold)
     {
-      // detected object
-      //Serial.print("measured distance:");
-      //Serial.print(distance);
-      //Serial.print("cm - debounce:");
-      //Serial.println(debounce);
-      debounce = debounce + 1;
-      if (debounce >= debounceThreshold)
+      // Seen the object long enough that it is real
+      if (detected == false)
       {
-        // Seen the object long enough that it is real
-        if (detected == false)
-        {
-          // first time we have seen it
-          digitalWrite(sensedPin, LOW); // turn on sensed LED
-          Serial.print("Train Detected at ");
-          Serial.print(distance);
-          Serial.println(" cm");
-          sendMessageToSignalbox("Sensor:  Train Detected");
+        // first time we have seen it
+        digitalWrite(sensedPin, LOW); // turn on sensed LED
+        Serial.print("Train Detected at ");
+        Serial.print(distance);
+        Serial.println(" cm");
+        sendMessageToSignalbox("Sensor:  Train Detected");
 
-          detected = true;
-        }
-        debounce = 0;
-        retrigger = 0;
+        detected = true;
       }
-    }
-    else
-    {
-      // no in range object detected
       debounce = 0;
-      if (detected == true)
+      retrigger = 0;
+    }
+  }
+  else
+  {
+    // no in range object detected
+    debounce = 0;
+    if (detected == true)
+    {
+      // we previously had seen an object so action the retrigger delay
+      retrigger = retrigger + 1;
+      if (retrigger >= retriggerThreshold)
       {
-        // we previously had seen an object so action the retrigger delay
-        retrigger = retrigger + 1;
-        if (retrigger >= retriggerThreshold)
-        {
-          // retrigger delay expired enable for re sensing objects
-          digitalWrite(sensedPin, HIGH); // turn off sensed LED
-          Serial.println("Track Clear");
-          sendMessageToSignalbox("Sensor:  Track Clear");
-          detected = false;
-          retrigger = 0;
-        }
+        // retrigger delay expired enable for re sensing objects
+        digitalWrite(sensedPin, HIGH); // turn off sensed LED
+        Serial.println("Track Clear");
+        sendMessageToSignalbox("Sensor:  Track Clear");
+        detected = false;
+        retrigger = 0;
       }
     }
   }
@@ -465,60 +513,70 @@ void checkSensor(void)
 
 void setDistance(void)
 {
-  static int lastStart = 0;
-  static int lastSpan = 0;
-  static int lastMinDistance = 0;
-  static int lastMaxDistance = 0;
-  int startReading = analogRead(sensorStart);
-  int spanReading = analogRead(sensorSpan);
-  startReading = startReading >> 4; // remove noise
-  spanReading = spanReading >> 4;   // remove noise
-  if (lastStart != startReading || lastSpan != spanReading)
-  {
-    lastStart = startReading;
-    lastSpan = spanReading;
-    // sensor measures 0 to 4m
-    minDistance = (startReading) + 50;
-    maxDistance = minDistance + (spanReading) + 10;
-    //Serial.print("startReading:");
-    //Serial.print(startReading);
-    //Serial.print("   spanReading:");
-    //Serial.println(spanReading);
-    if (abs(minDistance - lastMinDistance) > 10 || abs(maxDistance - lastMaxDistance) > 10)
+  if (remoteSettings == false)
+  { // using the on board pots to set the min and max distance
+    static int lastStart = 0;
+    static int lastSpan = 0;
+    static int lastMinDistance = 0;
+    static int lastMaxDistance = 0;
+    int startReading = analogRead(sensorStart);
+    int spanReading = analogRead(sensorSpan);
+    startReading = startReading >> 4; // remove noise
+    spanReading = spanReading >> 4;   // remove noise
+    if (lastStart != startReading || lastSpan != spanReading)
     {
-      //Serial.print("minDistance:");
-      //Serial.print(minDistance);
-      //Serial.print("cm  maxDistance:");
-      //Serial.print(maxDistance);
-      //Serial.println("cm");
-      lastMinDistance = minDistance;
-      lastMaxDistance = maxDistance;
-      char theBuffer[100];
-      char theNumber[5];
-      copyToBuffer(&theBuffer[0], "Sensor:  Range Adjustment minDistance:     ");
-      sprintf(theNumber, "%4d", minDistance);
-      copyToBuffer(&theBuffer[38], theNumber);
-      copyToBuffer(&theBuffer[42], "cm  maxDistance:     ");
-      sprintf(theNumber, "%4d", maxDistance);
-      copyToBuffer(&theBuffer[58], theNumber);
-      copyToBuffer(&theBuffer[62], "cm");
-      Serial.println(theBuffer);
-      sendMessageToSignalbox(theBuffer);
+      lastStart = startReading;
+      lastSpan = spanReading;
+      // sensor measures 0 to 4m
+      minDistance = (startReading) + 50;
+      maxDistance = minDistance + (spanReading) + 10;
+      // Serial.print("startReading:");
+      // Serial.print(startReading);
+      // Serial.print("   spanReading:");
+      // Serial.println(spanReading);
+      if (abs(minDistance - lastMinDistance) > 10 || abs(maxDistance - lastMaxDistance) > 10)
+      {
+        // Serial.print("minDistance:");
+        // Serial.print(minDistance);
+        // Serial.print("cm  maxDistance:");
+        // Serial.print(maxDistance);
+        // Serial.println("cm");
+        lastMinDistance = minDistance;
+        lastMaxDistance = maxDistance;
+        char theBuffer[100];
+        char theNumber[5];
+        copyToBuffer(&theBuffer[0], "Sensor:  Range Adjustment minDistance:     ");
+        sprintf(theNumber, "%4d", minDistance);
+        copyToBuffer(&theBuffer[38], theNumber);
+        copyToBuffer(&theBuffer[42], "cm  maxDistance:     ");
+        sprintf(theNumber, "%4d", maxDistance);
+        copyToBuffer(&theBuffer[58], theNumber);
+        copyToBuffer(&theBuffer[62], "cm");
+        Serial.println(theBuffer);
+        sendMessageToSignalbox(theBuffer);
+      }
     }
   }
 }
 
 void loop()
 {
-  sensorID = getSensorID();
+  sensorID = getSensorID(); // read the address switches
+  readConfig();             // check the configuration switches
+
+  if (WiFi.status() == WL_CONNECTED) {
+      digitalWrite(wifiPin, LOW);   // turn on the WiFi LED
+  } else {
+      digitalWrite(wifiPin, HIGH);  // turn off the WiFi LED
+  }
 
   if (haveSignalboxAddress == true)
   {
     // we have an address to send data to
     checkSignalboxMessage(); // check for messages from the signalbox
-    checkManualStop();
-    checkSensor();
-    setDistance();
+    checkManualStop();       // check the state of the stop buttoin
+    checkSensor();           // check the range sensor
+    setDistance();           // check the range setting pots
   }
   else
   {

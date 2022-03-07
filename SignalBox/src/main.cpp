@@ -1,25 +1,31 @@
 #include <Arduino.h>
 
-#include <WiFi.h>
+#include <myWiFi.h>
 #include <WiFiUDP.h>
 #include <Wire.h>
+#include "myEEPROM.h"
 
-//const char *ssid = "WHR Signals";
-const char *ssid = "WHRSignals";
-const char *pwd = ""; // set for suitable password
+#define softwareVersion 1.10
+
 const int udpPort = 44444;
 WiFiUDP udp;
-uint8_t txBuffer[50] = "";
-uint8_t rxBuffer[50] = "";
+uint8_t txBuffer[100] = "";
+uint8_t rxBuffer[100] = "";
 IPAddress lastIP;
 
-//IPAddress sensorAddress[16];
+uint8_t sensorStart[16] = {150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150}; // default to 2m start (150cm + 50cm)
+uint8_t sensorSpan[16] = {100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100};  // default to 1m  span -> detection range from 2m to 3m
+
+// IPAddress sensorAddress[16];
 
 bool sensorActive[16] = {false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false};
 bool seenActive[16] = {false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false};
 
 hw_timer_t *fastTimer = NULL;
 hw_timer_t *slowTimer = NULL;
+
+// EEPROM
+myEEPROM eeprom;
 
 // defines variables
 bool ledState;
@@ -29,13 +35,14 @@ bool clearSensorActive;
 bool clearPressed = false;
 bool stopPressed = false;
 bool isMaster;
+bool eepromAvailable = false;
 
 uint16_t portA;
 uint16_t portB;
 
 bool manualState[16] = {false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false}; // indicates manual stop switch is active
 
-int demoSteps = 7; // the default number of lights on the board for demo mode
+// int demoSteps = 7; // the default number of lights on the board for demo mode
 
 #define wifiActive 4
 #define signalsActive 2
@@ -43,6 +50,13 @@ int demoSteps = 7; // the default number of lights on the board for demo mode
 #define clearButton 16
 #define master 34
 #define uartReset 17
+#define espReset
+
+#define EEPROMtestaddr 32
+#define EEPROMstartaddr 0
+#define EEPROMspanaddr 128
+
+
 
 void timerInterrupt()
 {
@@ -85,10 +99,10 @@ void writePortB(uint16_t value)
 void ledRed(int sensor)
 {
   uint16_t value = 0x0001 << sensor;
-  //Serial.print("bit pattern:");
-  //Serial.print(value, BIN);
-  //Serial.print(" for sensor:");
-  //Serial.println(sensor);
+  // Serial.print("bit pattern:");
+  // Serial.print(value, BIN);
+  // Serial.print(" for sensor:");
+  // Serial.println(sensor);
   Serial.print("RED on for sensor:");
   Serial.println(sensor);
   portA = portA | value;
@@ -99,10 +113,10 @@ void ledGreen(int sensor)
 {
   uint16_t value = 0x0001 << sensor;
   value = value ^ 0xFFFF;
-  //Serial.print("bit pattern:");
-  //Serial.print(value, BIN);
-  //Serial.print(" for sensor:");
-  //Serial.println(sensor);
+  // Serial.print("bit pattern:");
+  // Serial.print(value, BIN);
+  // Serial.print(" for sensor:");
+  // Serial.println(sensor);
   Serial.print("GREEN on for sensor:");
   Serial.println(sensor);
   portA = portA & value;
@@ -114,10 +128,10 @@ void occupiedSection(int sensor)
   // turns on the yellow led to show train in section
   uint16_t value = 0x0001 << sensor;
   value = value ^ 0xFFFF;
-  //Serial.print("bit pattern:");
-  //Serial.print(value, BIN);
-  //Serial.print(" for sensor:");
-  //Serial.println(sensor);
+  // Serial.print("bit pattern:");
+  // Serial.print(value, BIN);
+  // Serial.print(" for sensor:");
+  // Serial.println(sensor);
   portB = portB & value;
   writePortB(portB);
   Serial.print("YELLOW on for track:");
@@ -128,10 +142,10 @@ void clearSection(int sensor)
 {
   // turn off the yellow led to show the section is clear
   uint16_t value = 0x0001 << sensor;
-  //Serial.print("bit pattern:");
-  //Serial.print(value, BIN);
-  //Serial.print(" for sensor:");
-  //Serial.println(sensor);
+  // Serial.print("bit pattern:");
+  // Serial.print(value, BIN);
+  // Serial.print(" for sensor:");
+  // Serial.println(sensor);
   portB = portB | value;
   writePortB(portB);
   Serial.print("YELLOW off for track:");
@@ -148,10 +162,10 @@ bool compareBuffers(char *buf1, const char *buf2, int num)
     {
       return false;
     }
-    //Serial.print("buf1:");
-    //Serial.print(buf1[i]);
-    //Serial.print("  buf2:");
-    //Serial.println(buf2[i]);
+    // Serial.print("buf1:");
+    // Serial.print(buf1[i]);
+    // Serial.print("  buf2:");
+    // Serial.println(buf2[i]);
   }
   return true;
 }
@@ -161,17 +175,17 @@ bool compareBuffersFrom(char *buf1, const char *buf2, int from, int num)
   if (num == 0)
     return false;
 
-  //Serial.print("from:");
-  //Serial.print(from);
-  //Serial.print("  num:");
-  //Serial.println(num);
+  // Serial.print("from:");
+  // Serial.print(from);
+  // Serial.print("  num:");
+  // Serial.println(num);
 
   for (int i = from; i < (num + from); i++)
   {
-    //Serial.print("buf1:");
-    //Serial.print(buf1[i]);
-    //Serial.print("  buf2:");
-    //Serial.println(buf2[i - from]);
+    // Serial.print("buf1:");
+    // Serial.print(buf1[i]);
+    // Serial.print("  buf2:");
+    // Serial.println(buf2[i - from]);
     if (buf1[i] != buf2[i - from])
     {
       return false;
@@ -187,8 +201,8 @@ char *getUdpMessage()
   if (udp.read(rxBuffer, 50) > 0)
   {
     // received a message
-    //Serial.print("getUdpMessage->Received: ");
-    //Serial.println((char *)buffer);
+    // Serial.print("getUdpMessage->Received: ");
+    // Serial.println((char *)buffer);
     lastIP = udp.remoteIP();
   }
   return (char *)rxBuffer;
@@ -216,29 +230,47 @@ String binaryString(uint16_t value)
 
 void sendAddressMessage()
 {
+  // broadcast message to the signals sent every 500ms
+  //                    led           Sensor setting
+  //                    stat      start distance, span
+  //                    |--||------------------------------|
+  // "Signalbox Address:AaBb00112233445566778899aabbccddeeff255.255.255.255"
+  //  0000000000111111111122222222223333333333444444444455555555556666666666
+  //  0123456789012345678901234567890123456789012345678901234567890123456789
+  //
+  //  sensor start distance = 8bit value (cm) + 50 cm minimum offset
+  //  sensor span distance = 8bit value (cm)
+
   static uint16_t lastPortA = 0;
   static uint16_t lastPortB = 0;
   if (isMaster)
   {
     //  This bradcasts the signalbox IP address if the signalbox is a master
     copyToTxBuffer("Signalbox Address: ");
-    uint8_t aByte = portA & 0xff;
-    txBuffer[19] = aByte; // put in the bit p[attern for the lights]
+    uint8_t aByte;
     aByte = portA >> 8;
-    txBuffer[18] = aByte; // put in the bit p[attern for the lights]
-    aByte = portB & 0xFF;
-    txBuffer[21] = aByte;
+    txBuffer[18] = aByte; // put in the bit pattern for the lights (bits 4-7)
+    aByte = portA & 0xff;
+    txBuffer[19] = aByte; // put in the bit pattern for the lights (bits 0-3)
     aByte = portB >> 8;
-    txBuffer[20] = aByte; // put in the bit p[attern for the lights]
+    txBuffer[20] = aByte; // put in the bit pattern for the lights (bits B-F)
+    aByte = portB & 0xFF;
+    txBuffer[21] = aByte; // put in the bit pattern for the lights (bits 8-A)
+
+    // add the sensor settings
+    for (int i = 0; i <= 15; i++)
+    {
+      txBuffer[22 + (i * 2)] = sensorStart[i];
+      txBuffer[23 + (i * 2)] = sensorSpan[i];
+    }
 
     const char *adr = WiFi.localIP().toString().c_str();
     int adrLen = strlen(adr);
-    //Serial.println(adrLen);
-    memcpy(&txBuffer[22], adr, adrLen);
-    //Serial.println((char *)buffer);
+    // Serial.println(adrLen);
+    memcpy(&txBuffer[54], adr, adrLen);
+    // Serial.println((char *)buffer);
     udp.beginPacket("255.255.255.255", udpPort);
-    udp.write(txBuffer, adrLen + 22);
-    //udp.write(buffer,33);
+    udp.write(txBuffer, 69);
     udp.endPacket();
     sendAddress = false;
     if (lastPortA != portA || lastPortB != portB)
@@ -255,7 +287,7 @@ void sendAddressMessage()
   }
 }
 
-void trainDetected(int sensorID)
+void actionTrainDetected(int sensorID)
 {
   ledRed(sensorID);
   occupiedSection(sensorID);
@@ -267,11 +299,11 @@ void trackClear(int sensorID)
   bool searching = true;
   while (searching == true)
   {
-    //Serial.print("Searching - ");
+    // Serial.print("Searching - ");
     previousSensor--;
     if (previousSensor < 0)
     {
-      //Serial.print(" Wrapped to sensor 15");
+      // Serial.print(" Wrapped to sensor 15");
       previousSensor = 15;
     }
     if (sensorActive[previousSensor] == true)
@@ -280,17 +312,80 @@ void trackClear(int sensorID)
     }
     else
     {
-      //Serial.print("sensor inactive ");
+      // Serial.print("sensor inactive ");
     }
   }
-  //Serial.print("Clearing Track:");
-  //Serial.println(previousSensor);
+  // Serial.print("Clearing Track:");
+  // Serial.println(previousSensor);
   if (manualState[previousSensor] == false && stopPressed == false)
   {
     // manual switch is not active so can change to Green
     ledGreen(previousSensor);
   }
   clearSection(previousSensor); // do clear the train from the previous section
+}
+
+// actions
+void trainDetected(int sensorID)
+{
+  Serial.print("Train Detected Sensor:");
+  Serial.println(sensorID);
+  actionTrainDetected(sensorID);
+}
+
+void trackCleared(int sensorID)
+{
+  Serial.print("Track Cleared Sensor:");
+  Serial.println(sensorID);
+  trackClear(sensorID);
+}
+
+void manualStopPressed(int sensorID)
+{
+  // Serial.print("Sensor:");
+  // Serial.print(sensorID);
+  // Serial.println(" Manual Stop Activated");
+  ledRed(sensorID); // indicate that the stop is on
+  manualState[sensorID] = true;
+}
+
+void manualStopReleased(int sensorID)
+{
+  manualState[sensorID] = false;
+  // check if we can clear the red led on the board
+  // Serial.print("Sensor:");
+  // Serial.print(sensorID);
+  // Serial.println(" Manual Stop Released");
+  uint16_t check = 0x0001 << sensorID;
+  // Serial.print("check:");
+  // Serial.print(check);
+  // Serial.print(" portB:");
+  // Serial.println(portB);
+  if ((check & portB)) // portB pin low if train in section
+  {
+    // there is not a train in the section
+    if (stopPressed == false)
+    {
+      // stop button not pressed so we can go back to green
+      // Serial.println("Track clear so going Green");
+      ledGreen(sensorID);
+    }
+  }
+}
+
+void forceTrackClear(int sensorID)
+{
+  // force clear of this sensors section of track (used for steaming bays)
+  uint16_t check = 0x0001 << sensorID;
+  portB = portB | check;
+}
+
+unsigned char checksum(char *ptr, size_t sz)
+{
+  unsigned char chk = 0;
+  while (sz-- != 0)
+    chk -= *ptr++;
+  return chk;
 }
 
 void checkMessage()
@@ -301,10 +396,10 @@ void checkMessage()
   int messageLen = strlen(message);
   if (messageLen > 5)
   {
-    //Serial.print("checkSMessage->message: ");
-    //Serial.println(message);
-    //Serial.print("checkMessage->messageLen: ");
-    //Serial.println(messageLen);
+    //    Serial.print("checkSMessage->message: ");
+    //    Serial.println(message);
+    //    Serial.print("checkMessage->messageLen: ");
+    //    Serial.println(messageLen);
     if (isMaster)
     {
       // this is a master so process the messages from sensors
@@ -312,77 +407,106 @@ void checkMessage()
       {
         // message from Sensor so update it's IP address in case it has changed
         int sensorID = message[7] - 48; // convert from ASCII
-        //Serial.print("SensorID:");
-        //Serial.println(sensorID);
+        // Serial.print("SensorID:");
+        // Serial.println(sensorID);
         if (sensorID >= 0 && sensorID <= 15)
         {
           if (sensorActive[sensorID] == false)
           {
-            Serial.print("Aquired Sensor:");
-            Serial.println(sensorID);
+            Serial.printf("Aquired Sensor:%d running software %s\n", sensorID, &message[8]);
           }
-          //sensorAddress[sensorID] = lastIP;
+          // sensorAddress[sensorID] = lastIP;
           sensorActive[sensorID] = true;
           seenActive[sensorID] = true; // indicate seen in this cycle
-          //Serial.print("Seen Sensor:");
-          //Serial.println(sensorID);
+          // Serial.print("Seen Sensor:");
+          // Serial.println(sensorID);
           digitalWrite(signalsActive, LOW); // turn on the signals active LED
         }
 
         // check for specific messages
         if (compareBuffersFrom(message, "Train Detected", 9, 13))
         {
-          Serial.print("Train Detected Sensor:");
-          Serial.println(sensorID);
           trainDetected(sensorID);
         }
         else if (compareBuffersFrom(message, "Track Clear", 9, 11))
         {
-          Serial.print("Track Cleared Sensor:");
-          Serial.println(sensorID);
-          trackClear(sensorID);
+          trackCleared(sensorID);
         }
         else if (compareBuffersFrom(message, "Manual Stop Active", 9, 18))
         {
-          //Serial.print("Sensor:");
-          //Serial.print(sensorID);
-          //Serial.println(" Manual Stop Activated");
-          ledRed(sensorID); // indicate that the stop is on
-          manualState[sensorID] = true;
+          manualStopPressed(sensorID);
         }
         else if (compareBuffersFrom(message, "Manual Stop Released", 9, 20))
         {
-          manualState[sensorID] = false;
-          // check if we can clear the red led on the board
-          //Serial.print("Sensor:");
-          //Serial.print(sensorID);
-          //Serial.println(" Manual Stop Released");
-          uint16_t check = 0x0001 << sensorID;
-          //Serial.print("check:");
-          //Serial.print(check);
-          //Serial.print(" portB:");
-          //Serial.println(portB);
-          if ((check & portB)) // portB pin low if train in section
-          {
-            // there is not a train in the section
-            if (stopPressed == false)
-            {
-              // stop button not pressed so we can go back to green
-              //Serial.println("Track clear so going Green");
-              ledGreen(sensorID);
-            }
-          }
+          manualStopReleased(sensorID);
         }
         else if (compareBuffersFrom(message, "Force Track Clear", 9, 17))
         {
-          // force clear of this sensors section of track (used for steaming bays)
-          uint16_t check = 0x0001 << sensorID;
-          portB = portB | check;
+          forceTrackClear(sensorID);
         }
         else
         {
-          //Serial.println("Track occupied so staying Red");
+          // Serial.println("Track occupied so staying Red");
         }
+      }
+      else if (compareBuffers(message, "Contrl", 6))
+      {
+        // It is a control message sent from the WHRApplication
+        // config message format
+        //        Imsc
+        // Contrl:DDDs
+        // 0000000000111111111122222222223
+        // 0123456789012345678901234567890
+        // ID = Sensor ID
+        // mD = minDistance 1...250 (distance is + 50 cm)
+        // sD = spanDistance 1...250 in cm
+        // cs = checksum
+        //
+        // sensorStart and sensorSpan are the cm values for those attributes
+        //        Serial.printf("Received message from WHRDisplay App %s\n", message);
+        int sensorID = message[7] - 48; // convert from ASCII
+        int ctrStart = message[8];
+        int ctrSpan = message[9];
+        Serial.printf("Received message from WHRDisplay App SensorID:%d minDistance:%d spanDistance:%d checkSum:%d\n", sensorID, ctrStart, ctrSpan, message[10]);
+        //        int ctrCS = message[14];
+        //        if (checksum(message, 10) == 0)
+        //        {
+        Serial.println("Checksum OK");
+        // Serial.print("SensorID:");
+        // Serial.println(sensorID);
+        if (sensorID >= 0 && sensorID <= 15)
+        { // a valid sensorID
+          if (ctrStart != 255)
+          {
+            sensorStart[sensorID] = ctrStart;
+            Serial.printf("new minDistance of %d for Sensor %d\n", ctrStart, sensorID);
+          }
+          if (ctrSpan != 255)
+          {
+            sensorSpan[sensorID] = ctrSpan;
+            Serial.printf("new spanDistance of %d for Sensor %d\n", ctrSpan, sensorID);
+          }
+        }
+        else
+        {
+          // check if it is all clear or all stop or all go
+          if (sensorID == 35)
+          {
+            // All Stop
+            portA = 0xffff;
+          }
+          if (sensorID == 40)
+          {
+            // All Clear
+            portB = 0xffff;
+          }
+          if (sensorID == 23)
+          {
+            // all Go
+            portA = 0;
+          }
+        }
+        //       }
       }
     }
     else
@@ -442,7 +566,7 @@ void checkSwitches()
     {
       if (clearPressed == false)
       {
-        //Serial.println("Clear button Pressed");
+        // Serial.println("Clear button Pressed");
         if (stopPressed == false)
         {
           clearPressed = true;
@@ -465,7 +589,7 @@ void checkSwitches()
       if (stopPressed == false)
       {
         // it wasn't pressed before
-        //Serial.println("Stop button pressed");
+        // Serial.println("Stop button pressed");
         stopPressed = true;
         for (int i = 0; i < 16; i++)
         {
@@ -484,15 +608,15 @@ void checkSwitches()
         for (int i = 0; i < 16; i++)
         {
           uint16_t check = 0x0001 << i;
-          //Serial.print("check:");
-          //Serial.print(check);
-          //Serial.print(" portB:");
-          //Serial.println(portB);
+          // Serial.print("check:");
+          // Serial.print(check);
+          // Serial.print(" portB:");
+          // Serial.println(portB);
           if ((check & portB)) // portB pin low if train in section
           {
             // there is not a train in this section
             // stop button not pressed so we can go back to green
-            //Serial.println("Track clear so going Green");
+            // Serial.println("Track clear so going Green");
             ledGreen(i);
           }
         }
@@ -501,15 +625,21 @@ void checkSwitches()
   }
 }
 
-void demoFlash(int pulses){
+void demoFlash(int pulses)
+{
   static bool ledState = HIGH;
-  for (int j=0; j<pulses; j++){
-      if (ledState = !ledState) {
-        digitalWrite(signalsActive, HIGH); 
-      } else {
-        digitalWrite(signalsActive, LOW); 
-      }
-      delay(500);
+  for (int j = 0; j < pulses; j++)
+  {
+    ledState = !ledState;
+    if (ledState == false)
+    {
+      digitalWrite(signalsActive, HIGH);
+    }
+    else
+    {
+      digitalWrite(signalsActive, LOW);
+    }
+    delay(500);
   }
 }
 
@@ -529,7 +659,7 @@ void demoMode(void)
     while (!digitalRead(stopButton)) // demo will run as long as stop is pressed
     {
       // make a train travel around the track
-      trainDetected(i); // simulate having received a train detected message from sensor i
+      actionTrainDetected(i); // simulate having received a train detected message from sensor i
       sendAddressMessage();
       demoFlash(3);
       if (!digitalRead(clearButton))
@@ -559,32 +689,17 @@ void demoMode(void)
   }
 }
 
-void setup()
+void initUART()
 {
-  Serial.begin(115200); // // Serial Communication is starting with 115200 baudrate
-  delay(2000);
-  Serial.println("");
-  Serial.println("West Huntspill Railway Signalbox Module"); // print some text in Serial Monitor
-
-  pinMode(wifiActive, OUTPUT);
-  pinMode(signalsActive, OUTPUT);
-  pinMode(stopButton, INPUT_PULLUP);
-  pinMode(clearButton, INPUT_PULLUP);
-  pinMode(master, INPUT_PULLUP); // master slave input switch
-  pinMode(uartReset, OUTPUT);    // UART reset
-
-  digitalWrite(wifiActive, HIGH);    // turn off the wifi active LED
-  digitalWrite(signalsActive, HIGH); // turn off the signals active LED
-  isMaster = digitalRead(master);    // force print of status on first check
-  checkMaster();
-
+  // setup the i2C UART
   portA = 0x0000;
   portB = 0XFFFF;
+
   digitalWrite(uartReset, LOW);
   delay(100);
   digitalWrite(uartReset, HIGH);
   delay(100);
-  // setup the i2C UART
+
   Wire.begin();
   Wire.beginTransmission(0x20);
   Wire.write(0x00); // IODIRA
@@ -608,24 +723,140 @@ void setup()
 
   writePortA(0xFFFF); // all red LED on
   writePortB(0xFFFF); // all yellow LED off
+}
 
-  detected = false;
-
-  WiFi.begin(ssid, pwd);
-  while (WiFi.status() != WL_CONNECTED)
+void checkEEPROM()
+{
+#define EEPROMtestValue 0x5A
+  // check for EEPROM
+  uint8_t tries = 0;
+  while (tries < 5 && eepromAvailable == false)
   {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("");
-  Serial.print("Connected to:");
-  Serial.print(ssid);
-  Serial.print(" IP Address:");
-  Serial.println(WiFi.localIP());
+    tries++;
+    uint8_t value = eeprom.read(EEPROMtestaddr);
+    Serial.print("EEPROM first read value:");
+    Serial.println(value);
 
-  digitalWrite(wifiActive, LOW); // turn on the wifi led
-  delay(1000);
+    if (value == EEPROMtestValue)
+    {
+      // EEPROM exists
+      eepromAvailable = true;
+      Serial.print("EEPROM exists on try ");
+      Serial.println(tries);
+      // read the values from the EEPROM
+      for (int i = 0; i <= 15; i++)
+      {
+        delay(10);
+        sensorStart[i] = eeprom.read(EEPROMstartaddr + i);
+        delay(10);
+        sensorSpan[i] = eeprom.read(EEPROMspanaddr + i);
+      }
+      Serial.println("Settings from EEPROM");
+      Serial.println("Sensor   Start   Span  (from    to   )");
+      for (int i = 0; i <= 15; i++)
+      {
+        char buf[50];
+        sprintf(buf, "  %02d     %03d     %03d   (%0.2fm   %0.2fm)", i, sensorStart[i], sensorSpan[i], float(sensorStart[i] + 50) / 100, float(sensorStart[i] + 50) / 100 + float(sensorSpan[i]) / 100);
+        Serial.println(buf);
+      }
+    }
+    else
+    {
+      // try writing as it might be a new eeprom
+      eeprom.write(EEPROMtestaddr, EEPROMtestValue);
+      delay(100);
+      value = eeprom.read(EEPROMtestaddr);
+      Serial.print("EEPROM second read value:");
+      Serial.println(value);
+      if (value == EEPROMtestValue)
+      {
+        // EEPROM exists
+        eepromAvailable = true;
+        Serial.println("EEPROM exists first use");
+        // set the defaults in teh EEPROM as it is first use
+        for (int i = 0; i <= 15; i++)
+        {
+          delay(10);
+          eeprom.write(EEPROMstartaddr + i, sensorStart[i]);
+          delay(10);
+          eeprom.write(EEPROMspanaddr + i, sensorSpan[i]);
+        }
+        Serial.println("Set to EEPROM");
+        Serial.println("Sensor   Start   Span");
+        for (int i = 0; i <= 15; i++)
+        {
+          char buf[50];
+          sprintf(buf, "  %02d     %03d     %03d   (%0.2fm   %0.2fm)", i, sensorStart[i], sensorSpan[i], float(sensorStart[i] + 50) / 100, float(sensorStart[i] + 50) / 100 + float(sensorSpan[i]) / 100);
+          Serial.println(buf);
+        }
+      }
+      else
+      {
+        Serial.println("No EEPROM fitted");
+      }
+    }
+    delay(500);
+  }
+}
+
+void saveSettings()
+{
+  if (eepromAvailable == true)
+  {
+    uint8_t value;
+    for (int i = 0; i <= 15; i++)
+    {
+      value = eeprom.read(EEPROMstartaddr + i);
+      if (value != sensorStart[i])
+      {
+        Serial.print("Writing new start value:");
+        Serial.print(sensorStart[i]);
+        Serial.print(" for sensor ");
+        Serial.println(i);
+        eeprom.write(EEPROMstartaddr + i, sensorStart[i]);
+      }
+      value = eeprom.read(EEPROMspanaddr + i);
+      if (value != sensorSpan[i])
+      {
+        Serial.print("Writing new span value:");
+        Serial.print(sensorSpan[i]);
+        Serial.print(" for sensor ");
+        Serial.println("i");
+        eeprom.write(EEPROMspanaddr + i, sensorSpan[i]);
+      }
+    }
+  }
+}
+
+void setup()
+{
+  Serial.begin(115200); // // Serial Communication is starting with 115200 baudrate
+  delay(2000);
+  Serial.println("");
+  Serial.println("West Huntspill Railway Signalbox Module"); // print some text in Serial Monitor
+  Serial.printf("Software Version: %.2f\n", softwareVersion);
+
+  pinMode(wifiActive, OUTPUT);
+  pinMode(signalsActive, OUTPUT);
+  pinMode(stopButton, INPUT_PULLUP);
+  pinMode(clearButton, INPUT_PULLUP);
+  pinMode(master, INPUT_PULLUP); // master slave input switch
+  pinMode(uartReset, OUTPUT);    // UART reset
+
+  digitalWrite(wifiActive, HIGH);    // turn off the wifi active LED
+  digitalWrite(signalsActive, HIGH); // turn off the signals active LED
+
+  isMaster = digitalRead(master); // force print of status on first check
+
+  checkMaster();
+
+  initUART();
+
+  setupWiFi();
+
   udp.begin(udpPort);
+
+  checkEEPROM();
 
   demoMode(); // check if entering demo mode
 
@@ -654,6 +885,8 @@ void setup()
   }
 }
 
+
+
 void loop()
 {
 
@@ -661,12 +894,19 @@ void loop()
   checkMessage();
   checkSwitches();
 
-  if (sendAddress == true)
+  if (WiFi.status() == WL_CONNECTED) {
+      digitalWrite(wifiActive, LOW);    // turn on the wifi active LED
+  } else {
+      digitalWrite(wifiActive, HIGH);    // turn off the wifi active LED
+  }
+
+  if (sendAddress == true) // set true by teh fast timer interrupt every 0.5 seconds
   {
     sendAddressMessage();
   }
-  if (clearSensorActive == true)
+  if (clearSensorActive == true) // set true by the slow timer interrupt every 20 seconds
   {
+    saveSettings();
     for (int i = 0; i < 16; i++)
     {
       if (seenActive[i] == false && sensorActive[i] == true)
